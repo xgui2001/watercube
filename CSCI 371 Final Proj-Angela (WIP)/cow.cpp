@@ -275,7 +275,6 @@ struct
 
         uniform vec4 eye_World;
 
-
         void main() {
             vec3 world_to_eye = vec3(eye_World) - fs_in.position_World;
             vec3 N = normalize(fs_in.normal_World);
@@ -286,6 +285,9 @@ struct
             if (has_vertex_texCoords) {
                 vec4 tmp = texture(i_texture, fs_in.texCoord);
                 color = tmp.rgb;
+                vec3 color_l = vec3(0.1) + color;
+                vec3 color_d = color - vec3(0.1);
+                color = mix(color_l, color_d, E); 
                 a = tmp.a;
             }
             if (has_vertex_normals) {
@@ -439,6 +441,7 @@ struct
     vec3 yellow = {255. / 255, 255. / 255, 50. / 255}; // not the actual monokai yellow cause i don't like it
     vec3 green = {166. / 255, 226. / 255, 46. / 255};
     vec3 blue = {102. / 255, 217. / 255, 239. / 255};
+    vec3 blue2 = {152. / 255, 235. / 255, 252. / 255};
     vec3 purple = {174. / 255, 129. / 255, 255. / 255};
     vec3 white = {255. / 255, 255. / 255, 255. / 255};
     vec3 gray = {127. / 255, 127. / 255, 127. / 255};
