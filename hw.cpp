@@ -6,20 +6,15 @@
 // #define EIGEN_LINEAR_SOLVER // will discuss Thursday
 #include "_cow_optimization.cpp"
 
-vec2 s_mouse;
-
-struct
-{
+struct {
     bool playing = false;
     bool check_derivatives = false;
     int num_rows = 2;
     bool noisy = false;
-    bool mouse = false;
     double theta_gravity = -RAD(90);
 } tweaks = {};
 
-struct Simulation
-{
+struct Simulation {
     // num_*
     int num_nodes;
     int num_springs;
@@ -32,18 +27,16 @@ struct Simulation
 
     // convenience
     int num_bytes_x; // sim.X, state.x, state.x_prev, state.x_prev_prev
-    int N;           // 2 * num_nodes
+    int N; // 2 * num_nodes
 };
 
-struct State
-{
+struct State {
     double *x;           // node_current_positions           (x_k  )
     double *x_prev;      // node_previous_positions          (x_km1)
     double *x_prev_prev; // node_previous_previous_positions (x_km2)
 };
 
-struct Parameters
-{
+struct Parameters {
     double totalMass = 1.;
     double gravitationalConstant_NOTE_positive = 9.81;
     double springSpringConstant = 1e2;
@@ -51,19 +44,15 @@ struct Parameters
     double timestep = 1. / 60;
 };
 
-#define ENABLED_NUM_FLAGS 5
-struct Enabled
-{
+#define ENABLED_NUM_FLAGS 4
+struct Enabled {
     // NOTE in practice, i would probably use a bit field here #237x371CrossoverEpisode
-    union
-    {
-        struct
-        {
+    union {
+        struct {
             bool gravity;
             bool springs;
             bool pins;
             bool dynamics;
-            bool mouse;
         };
         bool flags[ENABLED_NUM_FLAGS];
     };
@@ -72,79 +61,37 @@ char *enabled_flag_padded_strings[ENABLED_NUM_FLAGS] = {
     " gravity",
     " springs",
     "    pins",
-    "dynamics",
-    "mouse"};
+    "dynamics"
+};
 
-void simulation_draw(mat4 PV, Simulation *sim, State *state, Parameters *, Enabled *enabled)
-{
+
+void simulation_draw(mat4 PV, Simulation *sim, State *state, Parameters *, Enabled *enabled) {
     gl_PV(PV);
 
     int num_nodes = sim->num_nodes;
     int num_springs = sim->num_springs;
     int num_pins = sim->num_pins;
-    vec2 *X = (vec2 *)sim->X;
-    vec2 *x = (vec2 *)state->x;
+    vec2 *X = (vec2 *) sim->X;
+    vec2 *x = (vec2 *) state->x;
     int2 *springs = sim->springs;
     int *pins = sim->pins;
 
-    {
-        gl_begin(LINES);
-        for (int a = 0; a < num_springs; a++)
-        {
-            if (enabled->springs)
-            {
-                gl_color(monokai.blue);
-            }
-            else
-            {
-                gl_color(monokai.gray);
-            }
-            gl_vertex(x[springs[a].i]);
-            gl_vertex(x[springs[a].j]);
-        }
-        gl_end();
-    }
-    {
-        gl_begin(POINTS);
-        for (int b = 0; b < num_nodes; b++)
-        {
-            gl_color(monokai.red);
-            gl_vertex(x[b]);
-        }
-        gl_end();
-    }
+    { // springs
+        // TODO springs as LINES                             
+        //      dark blue if enabled->springs; otherwise gray
 
-    {
-        gl_begin(POINTS);
-        for (int c = 0; c < num_pins; c++)
-        {
-            if (enabled->pins)
-            {
-                gl_color(monokai.yellow);
-            }
-            else
-            {
-                gl_color(monokai.gray);
-            }
-            gl_vertex(x[pins[c]]);
-        }
-        gl_end();
 
-        gl_begin(LINES);
-        for (int c = 0; c < num_pins; c++)
-        {
-            if (enabled->pins)
-            {
-                gl_color(monokai.yellow);
-            }
-            else
-            {
-                gl_color(monokai.gray);
-            }
-            gl_vertex(x[pins[c]]);
-            gl_vertex(X[pins[c]]);
-        }
-        gl_end();
+    }
+    { // nodes
+        // TODO nodes as blue POINTS
+
+
+    }
+    { // pins
+        // TODO pins as POINTS (at x[pin]) and LINES (from x[pin] to X[pin])
+        //      yellow if enabled->pins; otherwise gray                     
+
+
     }
 
     FORNOW_UNUSED(enabled);
@@ -157,24 +104,22 @@ void simulation_draw(mat4 PV, Simulation *sim, State *state, Parameters *, Enabl
     FORNOW_UNUSED(pins);
 }
 
+
 // compute_and_add_to the energy U, gradient (dUdx) U_x, and Hessian (d2Udx2) U_xx
 // note that U is more of an "energy" because of how we handle dynamics
-void compute_and_add_to(Simulation *sim, State *state, Parameters *params, Enabled *enabled, double *U, double *U_x, StretchyBuffer<HessianEntry> *U_xx)
-{
+void compute_and_add_to(Simulation *sim, State *state, Parameters *params, Enabled *enabled, double *U, double *U_x, StretchyBuffer<HessianEntry> *U_xx) {
     // // convenience
     // vec2 pointers to data
-    vec2 *X = (vec2 *)sim->X;
-    vec2 *x = (vec2 *)state->x;
-    vec2 *x_prev = (vec2 *)state->x_prev;
-    vec2 *x_prev_prev = (vec2 *)state->x_prev_prev;
-    vec2 *a = (vec2 *)malloc(sim->num_bytes_x);
-    {
+    vec2 *X           = (vec2 *) sim->X;
+    vec2 *x           = (vec2 *) state->x;
+    vec2 *x_prev      = (vec2 *) state->x_prev;
+    vec2 *x_prev_prev = (vec2 *) state->x_prev_prev;
+    vec2 *a = (vec2 *) malloc(sim->num_bytes_x); {
         for_(i, sim->num_nodes) { a[i] = (x[i] - 2 * x_prev[i] + x_prev_prev[i]) / pow(params->timestep, 2); }
     }
     defer { free(a); };
 
-    if (enabled->gravity)
-    {
+    if (enabled->gravity) {
         int num_nodes = sim->num_nodes;
         // vec2 *x;
         double m = params->totalMass / sim->num_nodes;
@@ -182,54 +127,18 @@ void compute_and_add_to(Simulation *sim, State *state, Parameters *params, Enabl
 
         // TODO implement gravity
 
-        for (int i = 0; i < num_nodes; i++)
-        {
-            vec2 f = m * g * V2(cos(tweaks.theta_gravity), sin(tweaks.theta_gravity));
-            if (U)
-            {
-                *U += -dot(f, x[i]);
-            }
-            if (U_x)
-            {
-                add(U_x, i, -f);
-            }
-        }
+
+        FORNOW_UNUSED(num_nodes);
+        FORNOW_UNUSED(m);
+        FORNOW_UNUSED(g);
     }
 
-    if (enabled->mouse)
-    {
-        int num_nodes = sim->num_nodes;
-        // vec2 *x;
-        // vec2 *X;
-        double k_mouse = 1;
-
-        mat2 I = M2(1, 0, 0, 1);
-
-        for (int i = 0; i < num_nodes; i++)
-        {
-            if (U)
-            {
-                *U += -k_mouse * squaredNorm(x[i] - s_mouse) / 2;
-            }
-            if (U_x)
-            {
-                add(U_x, i, -k_mouse * (x[i] - s_mouse));
-            }
-            if (U_xx)
-            {
-                add(U_xx, i, i, -k_mouse * I);
-            }
-        }
-    }
-
-    if (enabled->springs)
-    {
+    if (enabled->springs) {
         // FORNOW HACK make diagonal springs less stiff
         double R_HACK = norm(X[0] - X[1]);
 
         double k_spring = params->springSpringConstant;
-        for_(spring_i, sim->num_springs)
-        {
+        for_(spring_i, sim->num_springs) {
             int i = sim->springs[spring_i].i;
             int j = sim->springs[spring_i].j;
             vec2 v = x[i] - x[j];
@@ -240,34 +149,27 @@ void compute_and_add_to(Simulation *sim, State *state, Parameters *params, Enabl
             double Delta = r - R;
 
             // FORNOW HACK make diagonal springs less stiff
-            if (R > TINY + R_HACK)
-            {
-                k_spring /= 16;
-            }
+            if (R > TINY + R_HACK) { k_spring /= 16; }
 
-            if (U)
-            {
+            if (U) {
                 (*U) += k_spring * pow(Delta, 2) / 2;
             }
-            if (U_x)
-            {
+            if (U_x) {
                 vec2 seg = k_spring * Delta * r_v;
-                add(U_x, i, seg);
+                add(U_x, i,  seg);
                 add(U_x, j, -seg);
             }
-            if (U_xx)
-            {
+            if (U_xx) {
                 mat2 blk = k_spring * outer(r_v, r_v) + k_spring * Delta * r_vv;
-                add(U_xx, i, i, blk);
+                add(U_xx, i, i,  blk);
                 add(U_xx, i, j, -blk);
-                add(U_xx, j, j, blk);
+                add(U_xx, j, j,  blk);
                 add(U_xx, j, i, -blk);
             }
         }
     }
 
-    if (enabled->pins)
-    {
+    if (enabled->pins) {
         int num_pins = sim->num_pins;
         // vec2 *x;
         // vec2 *X;
@@ -276,86 +178,41 @@ void compute_and_add_to(Simulation *sim, State *state, Parameters *params, Enabl
 
         // TODO implement pins
 
-        for (int ii = 0; ii < num_pins; ii++)
-        {
-            int i = pins[ii];
-            vec2 delta_pos = x[i] - X[i];
-            double pin_energy = k_pin * squaredNorm(delta_pos) / 2;
-            vec2 pin_gradient = k_pin * delta_pos;
-            mat2 I = M2(1, 0, 0, 1);
-            mat2 pin_Hessian = k_pin * I;
 
-            if (U)
-            {
-                *U += pin_energy;
-            }
-
-            if (U_x)
-            {
-                add(U_x, i, pin_gradient);
-            }
-
-            if (U_xx)
-            {
-                add(U_xx, i, i, pin_Hessian);
-            }
-        }
+        FORNOW_UNUSED(num_pins);
+        FORNOW_UNUSED(pins);
+        FORNOW_UNUSED(k_pin);
     }
 
-    if (enabled->dynamics)
-    {
+    if (enabled->dynamics) {
         double h = params->timestep;
         double m = params->totalMass / sim->num_nodes;
         mat2 I = M2(1, 0, 0, 1);
-        for_(i, sim->num_nodes)
-        {
-            if (U)
-            {
-                (*U) += pow(h, 2) / 2 * m * squaredNorm(a[i]);
-            }
-            if (U_x)
-            {
-                add(U_x, i, m * a[i]);
-            }
-            if (U_xx)
-            {
-                add(U_xx, i, i, m / pow(h, 2) * I);
-            }
+        for_(i, sim->num_nodes) {
+            if (U) { (*U) += pow(h, 2) / 2 * m * squaredNorm(a[i]); }
+            if (U_x) { add(U_x, i,  m * a[i]); }
+            if (U_xx) { add(U_xx, i, i, m / pow(h, 2) * I); }
         }
-    }
-    else
-    {
+    } else {
         double b = .0001;
         mat2 I = M2(1, 0, 0, 1);
-        for_(i, sim->num_nodes)
-        {
-            if (U_x)
-            {
-                add(U_x, i, b * x[i]);
-            }
-            if (U_xx)
-            {
-                add(U_xx, i, i, b * I);
-            }
+        for_(i, sim->num_nodes) {
+            if (U_x) { add(U_x, i,  b * x[i]); }
+            if (U_xx) { add(U_xx, i, i, b * I); }
         }
     }
 }
 
-void finite_difference_and_add_to(Simulation *sim, State *state, Parameters *params, Enabled *enabled, double *U_x, StretchyBuffer<HessianEntry> *U_xx, double fd_stepsize = 0)
-{
-    if (IS_EQUAL(0., fd_stepsize))
-    {
+void finite_difference_and_add_to(Simulation *sim, State *state, Parameters *params, Enabled *enabled, double *U_x, StretchyBuffer<HessianEntry> *U_xx, double fd_stepsize = 0) {
+    if (IS_EQUAL(0., fd_stepsize)) {
         fd_stepsize = 1e-5;
     }
 
-    if (U_x)
-    {
+    if (U_x) {
         double left;
         double right;
-        for_(k, sim->N)
-        {
-            double x_k_o = state->x[k];
-            {
+        for_(k, sim->N) {
+            double x_k_o = state->x[k]; {
                 state->x[k] = x_k_o - fd_stepsize;
                 left = 0;
                 compute_and_add_to(sim, state, params, enabled, &left, NULL, NULL);
@@ -363,25 +220,20 @@ void finite_difference_and_add_to(Simulation *sim, State *state, Parameters *par
                 state->x[k] = x_k_o + fd_stepsize;
                 right = 0;
                 compute_and_add_to(sim, state, params, enabled, &right, NULL, NULL);
-            }
-            state->x[k] = x_k_o;
+            } state->x[k] = x_k_o;
             U_x[k] += (right - left) / (2 * fd_stepsize);
         }
     }
 
-    if (U_xx)
-    {
-        double *left = (double *)malloc(sim->N * sizeof(double));
-        double *right = (double *)malloc(sim->N * sizeof(double));
-        defer
-        {
+    if (U_xx) {
+        double *left = (double *) malloc(sim->N * sizeof(double));
+        double *right = (double *) malloc(sim->N * sizeof(double));
+        defer {
             free(left);
             free(right);
         };
-        for_(col, sim->N)
-        {
-            double x_c_0 = state->x[col];
-            {
+        for_(col, sim->N) {
+            double x_c_0 = state->x[col]; {
                 state->x[col] = x_c_0 - fd_stepsize;
                 memset(left, 0, sim->N * sizeof(double));
                 compute_and_add_to(sim, state, params, enabled, NULL, left, NULL);
@@ -389,27 +241,23 @@ void finite_difference_and_add_to(Simulation *sim, State *state, Parameters *par
                 state->x[col] = x_c_0 + fd_stepsize;
                 memset(right, 0, sim->N * sizeof(double));
                 compute_and_add_to(sim, state, params, enabled, NULL, right, NULL);
-            }
-            state->x[col] = x_c_0;
-            for_(row, sim->N)
-            {
+            } state->x[col] = x_c_0;
+            for_(row, sim->N) {
                 double val = (right[row] - left[row]) / (2 * fd_stepsize);
-                if (!IS_EQUAL(0., val))
-                    sbuff_push_back(U_xx, {row, col, val});
+                if (!IS_EQUAL(0., val)) sbuff_push_back(U_xx, { row, col, val } );
             }
         }
     }
 }
 
-void check_derivatives(Simulation *sim, State *state, Parameters *params, Enabled *enabled, double fd_stepsize = 0)
-{
-#define ABSOLUTE_ERROR_THRESHOLD .0001
-#define RELATIVE_ERROR_THRESHOLD .001
-#define TRIGGER_INVALID(a) (isnan(a) || isinf(a))
-#define TRIGGER_ERROR(error) (error > ABSOLUTE_ERROR_THRESHOLD && (2. * error / (ABS(a) + ABS(b))) > RELATIVE_ERROR_THRESHOLD)
+void check_derivatives(Simulation *sim, State *state, Parameters *params, Enabled *enabled, double fd_stepsize = 0) {
+    #define ABSOLUTE_ERROR_THRESHOLD .0001
+    #define RELATIVE_ERROR_THRESHOLD .001
+    #define TRIGGER_INVALID(a) (isnan(a) || isinf(a))
+    #define TRIGGER_ERROR(error) (error > ABSOLUTE_ERROR_THRESHOLD && (2. * error / (ABS(a) + ABS(b))) > RELATIVE_ERROR_THRESHOLD)
 
-    double *U_x = (double *)calloc(sim->N, sizeof(double));
-    double *U_x_fd = (double *)calloc(sim->N, sizeof(double));
+    double *U_x    = (double *) calloc(sim->N, sizeof(double));
+    double *U_x_fd = (double *) calloc(sim->N, sizeof(double));
     double *U_xx;
     double *U_xx_fd;
     {
@@ -425,70 +273,42 @@ void check_derivatives(Simulation *sim, State *state, Parameters *params, Enable
         sbuff_free(&_U_xx_fd);
     }
 
-    {     // check
+    { // check
         { // U_x
             bool passes = true;
-            for_(k, sim->N)
-            {
+            for_(k, sim->N) {
                 double a = U_x[k];
                 double b = U_x_fd[k];
                 double error = ABS(a - b);
                 bool invalid = TRIGGER_INVALID(a) || TRIGGER_INVALID(b);
                 bool wrong = TRIGGER_ERROR(error);
-                if (invalid || wrong)
-                {
-                    if (passes)
-                    {
-                        printf(" -- U_x FAIL");
-                    }
+                if (invalid || wrong) {
+                    if (passes) { printf(" -- U_x FAIL"); }
                     passes = false;
-                    if (invalid)
-                    {
-                        printf("%3d: nan or inf\n", k);
-                    }
-                    else
-                    {
-                        printf("%2d: | (%lf) - (%lf) | = %lf\n", k, a, b, error);
-                    }
+                    if (invalid) { printf("%3d: nan or inf\n", k); }
+                    else { printf("%2d: | (%lf) - (%lf) | = %lf\n", k, a, b, error); }
                 }
             }
-            if (passes)
-            {
-                printf(" -- U_x PASS");
-            }
+            if (passes) { printf(" -- U_x PASS"); }
         }
         { // U_xx
             bool passes = true;
-            for_(r, sim->N) for_(c, sim->N)
-            {
-#define NXN(M, row, col) ((M)[(sim->N) * (row) + (col)])
+            for_(r, sim->N) for_(c, sim->N) {
+                #define NXN(M, row, col) ((M)[(sim->N) * (row) + (col)])
                 double a = NXN(U_xx, r, c);
                 double b = NXN(U_xx_fd, r, c);
-#undef NXN
+                #undef NXN
                 double error = ABS(a - b);
                 bool invalid = TRIGGER_INVALID(a) || TRIGGER_INVALID(b);
                 bool wrong = TRIGGER_ERROR(error);
-                if (invalid || wrong)
-                {
-                    if (passes)
-                    {
-                        printf(" -- U_xx FAIL");
-                    }
+                if (invalid || wrong) {
+                    if (passes) { printf(" -- U_xx FAIL"); }
                     passes = false;
-                    if (invalid)
-                    {
-                        printf("%3d, %3d: nan or inf\n", r, c);
-                    }
-                    else
-                    {
-                        printf("%2d, %2d: | (%lf) - (%lf) | = %lf\n", r, c, a, b, error);
-                    }
+                    if (invalid) { printf("%3d, %3d: nan or inf\n", r, c); }
+                    else { printf("%2d, %2d: | (%lf) - (%lf) | = %lf\n", r, c, a, b, error); }
                 }
             }
-            if (passes)
-            {
-                printf(" -- U_xx PASS");
-            }
+            if (passes) { printf(" -- U_xx PASS"); }
         }
         printf("\n");
     }
@@ -501,16 +321,14 @@ void check_derivatives(Simulation *sim, State *state, Parameters *params, Enable
 
 // integrate forward one timestep using Newton's method for minimization with line search
 // U_xx searchDir = -U_x
-void step(Simulation *sim, State *state, Parameters *params, Enabled *enabled)
-{
+void step(Simulation *sim, State *state, Parameters *params, Enabled *enabled) {
     // FORNOW scratch
     StretchyBuffer<HessianEntry> U_xx = {};
-    double *minus_U_x = (double *)malloc(sim->num_bytes_x);
-    double *searchDirection = (double *)malloc(sim->num_bytes_x);
-    double *_next_x = (double *)malloc(sim->num_bytes_x);
-    double *_next_x_0_line_search = (double *)malloc(sim->num_bytes_x);
-    defer
-    {
+    double *minus_U_x         = (double *) malloc(sim->num_bytes_x);
+    double *searchDirection   = (double *) malloc(sim->num_bytes_x);
+    double *_next_x           = (double *) malloc(sim->num_bytes_x);
+    double *_next_x_0_line_search = (double *) malloc(sim->num_bytes_x);
+    defer {
         sbuff_free(&U_xx);
         free(minus_U_x);
         free(searchDirection);
@@ -520,16 +338,14 @@ void step(Simulation *sim, State *state, Parameters *params, Enabled *enabled)
 
     // warm start optimization at current position
     memcpy(_next_x, state->x, sim->num_bytes_x);
-    State next = {};
-    {
-        next.x = _next_x;
-        next.x_prev = state->x;
+    State next  = {}; {
+        next.x           = _next_x;
+        next.x_prev      = state->x;
         next.x_prev_prev = state->x_prev;
     }
 
     int iterationOfNewtonWithLineSearch = 0;
-    while (true)
-    {
+    while (true) {
         { // compute_and_add_to -U_x, U_xx
             U_xx.length = 0;
             memset(minus_U_x, 0, sim->num_bytes_x);
@@ -537,17 +353,12 @@ void step(Simulation *sim, State *state, Parameters *params, Enabled *enabled)
             for_(k, sim->N) { minus_U_x[k] *= -1; }
         }
 
-        if (Vector_dot(sim->N, minus_U_x, minus_U_x) < .001)
-        { // convergence check
+        if (Vector_dot(sim->N, minus_U_x, minus_U_x) < .001) { // convergence check
             break;
         }
 
-        if (iterationOfNewtonWithLineSearch++ > 50)
-        {
-            if (tweaks.noisy)
-            {
-                printf("phyiscs solve failed\n");
-            }
+        if (iterationOfNewtonWithLineSearch++ > 50) {
+            if (tweaks.noisy) { printf("phyiscs solve failed\n"); }
             break;
         }
 
@@ -555,30 +366,18 @@ void step(Simulation *sim, State *state, Parameters *params, Enabled *enabled)
             // U_x(x + searchDirection) ~ U_x + U_xx searchDirection := 0
             // => searchDirection = solve { U_xx searchDirection = -U_x }
             int iterationofDynamicRegularization = 0;
-            do
-            {
-                if (iterationofDynamicRegularization == 1)
-                {
-                    if (tweaks.noisy)
-                    {
-                        printf("not a descent direction\n");
-                    }
-                }
-                solve_sparse_linear_system(sim->N, (double *)searchDirection, &U_xx, minus_U_x);
+            do {
+                if (iterationofDynamicRegularization == 1) { if (tweaks.noisy) { printf("not a descent direction\n"); } }
+                solve_sparse_linear_system(sim->N, (double *) searchDirection, &U_xx, minus_U_x);
                 // memcpy(searchDirection, minus_U_x, sim->num_bytes_x);
 
                 { // regularize Hessian (sloppily)
-                    for_(k, sim->N)
-                    {
-                        sbuff_push_back(&U_xx, {k, k, pow(10, -4 + int(iterationofDynamicRegularization))});
+                    for_(k, sim->N) {
+                        sbuff_push_back(&U_xx, { k, k, pow(10, -4 + int(iterationofDynamicRegularization)) });
                     }
                     ++iterationofDynamicRegularization;
-                    if (iterationofDynamicRegularization == 20)
-                    {
-                        if (tweaks.noisy)
-                        {
-                            printf("dynamic regularization failed\n");
-                        }
+                    if (iterationofDynamicRegularization == 20) {
+                        if (tweaks.noisy) { printf("dynamic regularization failed\n"); }
                         break;
                     }
                 }
@@ -593,25 +392,19 @@ void step(Simulation *sim, State *state, Parameters *params, Enabled *enabled)
 
             int iterationOfLineSearch = 0;
             double stepSize = 1;
-            while (1)
-            {
+            while (1) {
                 // x_next = x_next_0 + stepSize * searchDirection
                 for_(k, sim->N) { next.x[k] = _next_x_0_line_search[k] + stepSize * searchDirection[k]; }
 
                 double O_curr = 0;
                 compute_and_add_to(sim, &next, params, enabled, &O_curr, NULL, NULL);
 
-                if (O_curr < O_0 + TINY)
-                { // line search succeeded
+                if (O_curr < O_0 + TINY) { // line search succeeded
                     break;
                 }
 
-                if (++iterationOfLineSearch > 30)
-                {
-                    if (tweaks.noisy)
-                    {
-                        printf("line search failed.\n");
-                    }
+                if (++iterationOfLineSearch > 30) {
+                    if (tweaks.noisy) { printf("line search failed.\n"); }
                     break;
                 }
 
@@ -622,28 +415,25 @@ void step(Simulation *sim, State *state, Parameters *params, Enabled *enabled)
 
     // state <- next
     memcpy(state->x_prev_prev, state->x_prev, sim->num_bytes_x);
-    memcpy(state->x_prev, state->x, sim->num_bytes_x);
-    memcpy(state->x, next.x, sim->num_bytes_x);
+    memcpy(state->x_prev,      state->x,      sim->num_bytes_x);
+    memcpy(state->x,           next.x,        sim->num_bytes_x);
 }
 
-Simulation build_beam(int num_rows, int num_cols)
-{
+Simulation build_beam(int num_rows, int num_cols) {
     Simulation sim = {};
-#define INDEX(row, col) ((row)*num_cols + (col))
+    #define INDEX(row, col) ((row) * num_cols + (col))
     { // nodes (README)
         sim.num_nodes = num_rows * num_cols;
-        sim.X = (double *)calloc(sim.num_nodes, sizeof(vec2));
+        sim.X = (double *) calloc(sim.num_nodes, sizeof(vec2));
         sim.num_bytes_x = sim.num_nodes * sizeof(vec2);
         sim.N = 2 * sim.num_nodes;
         {
             double S = 1. / (num_cols);
-            for_(row, num_rows)
-            {
+            for_(row, num_rows) {
                 double y = row * S;
-                for_(col, num_cols)
-                {
+                for_(col, num_cols) {
                     double x = col * S;
-                    ((vec2 *)sim.X)[INDEX(row, col)] = {x, y};
+                    ((vec2 *) sim.X)[INDEX(row, col)] = { x, y };
                 }
             }
         }
@@ -651,12 +441,11 @@ Simulation build_beam(int num_rows, int num_cols)
     { // springs
         StretchyBuffer<int2> _springs = {};
         {
-            for_(row, num_rows) for_(col, num_cols - 1) sbuff_push_back(&_springs, {INDEX(row, col), INDEX(row, col + 1)});
-            for_(row, num_rows - 1) for_(col, num_cols) sbuff_push_back(&_springs, {INDEX(row, col), INDEX(row + 1, col)});
-            for_(row, num_rows - 1) for_(col, num_cols - 1)
-            {
-                sbuff_push_back(&_springs, {INDEX(row, col), INDEX(row + 1, col + 1)});
-                sbuff_push_back(&_springs, {INDEX(row + 1, col), INDEX(row, col + 1)});
+            for_(row, num_rows) for_(col, num_cols - 1) sbuff_push_back(&_springs, { INDEX(row, col), INDEX(row, col + 1) });
+            for_(row, num_rows - 1) for_(col, num_cols) sbuff_push_back(&_springs, { INDEX(row, col), INDEX(row + 1, col) });
+            for_(row, num_rows - 1) for_(col, num_cols - 1) {
+                sbuff_push_back(&_springs, { INDEX(row, col), INDEX(row + 1, col + 1) });
+                sbuff_push_back(&_springs, { INDEX(row + 1, col), INDEX(row, col + 1) });
             }
         }
         sim.springs = _springs.data;
@@ -665,8 +454,7 @@ Simulation build_beam(int num_rows, int num_cols)
     { // pins
         StretchyBuffer<int> _pins = {};
         {
-            for_(j, num_rows)
-            {
+            for_(j, num_rows) {
                 sbuff_push_back(&_pins, INDEX(j, 0));
                 sbuff_push_back(&_pins, INDEX(j, num_cols - 1));
             }
@@ -674,42 +462,35 @@ Simulation build_beam(int num_rows, int num_cols)
         sim.pins = _pins.data;
         sim.num_pins = _pins.length;
     }
-#undef INDEX
+    #undef INDEX
     return sim;
 }
 
-void hw10()
-{
+void hw10() {
     init();
 
-    Camera2D camera = {2, 0, -.5};
+    Camera2D camera = { 2, 0, -.5 };
 
     Simulation sim = build_beam(tweaks.num_rows, 3 * tweaks.num_rows);
-    State state = {};
-    {
-        state.x = (double *)malloc(sim.num_bytes_x);
-        state.x_prev = (double *)malloc(sim.num_bytes_x);
-        state.x_prev_prev = (double *)malloc(sim.num_bytes_x);
-        memcpy(state.x, sim.X, sim.num_bytes_x);
-        memcpy(state.x_prev, sim.X, sim.num_bytes_x);
+    State state = {}; {
+        state.x           = (double *) malloc(sim.num_bytes_x);
+        state.x_prev      = (double *) malloc(sim.num_bytes_x);
+        state.x_prev_prev = (double *) malloc(sim.num_bytes_x);
+        memcpy(state.x,           sim.X, sim.num_bytes_x);
+        memcpy(state.x_prev,      sim.X, sim.num_bytes_x);
         memcpy(state.x_prev_prev, sim.X, sim.num_bytes_x);
     }
     Parameters params = {};
-    Enabled enabled = {};
-    {
-        for_(k, ENABLED_NUM_FLAGS)
-        {
+    Enabled enabled = {}; {
+        for_(k, ENABLED_NUM_FLAGS) {
             enabled.flags[k] = true;
         }
     }
 
-    while (begin_frame())
-    {
+    while (begin_frame()) {
         camera_move(&camera);
         mat4 PV = camera_get_PV(&camera);
         gl_PV(PV);
-
-        s_mouse = input_get_mouse_position_in_world_coordinates(PV);
 
         { // gui
             imgui_readout("num_nodes", &sim.num_nodes);
@@ -722,16 +503,14 @@ void hw10()
             imgui_checkbox("dynamics", &enabled.dynamics, 'd');
             imgui_checkbox("springs", &enabled.springs, 's');
             imgui_checkbox("playing", &tweaks.playing, 'p');
-            imgui_checkbox("mouse", &enabled.mouse, 'm');
             imgui_slider("timestep", &params.timestep, .001, .1);
             imgui_slider("springSpringConstant", &params.springSpringConstant, 1e0, 1e3);
             imgui_slider("pinSpringConstant", &params.pinSpringConstant, 1e0, 1e3);
-            imgui_slider("theta_gravity", &tweaks.theta_gravity, -RAD(90) - PI, -RAD(90) + PI, true);
+            imgui_slider("theta_gravity", &tweaks.theta_gravity, -RAD(90) -PI, -RAD(90) + PI, true);
             { // rebuild
                 int _num_rows = tweaks.num_rows;
                 imgui_slider("num_rows", &tweaks.num_rows, 1, 20, 'j', 'k');
-                if (_num_rows != tweaks.num_rows)
-                {
+                if (_num_rows != tweaks.num_rows) {
                     { // fornow
                         free(sim.X);
                         free(sim.springs);
@@ -739,31 +518,27 @@ void hw10()
                     }
                     sim = build_beam(tweaks.num_rows, 3 * tweaks.num_rows);
                     { // fornow
-                        state.x = (double *)realloc(state.x, sim.num_bytes_x);
-                        state.x_prev = (double *)realloc(state.x_prev, sim.num_bytes_x);
-                        state.x_prev_prev = (double *)realloc(state.x_prev_prev, sim.num_bytes_x);
-                        memcpy(state.x, sim.X, sim.num_bytes_x);
-                        memcpy(state.x_prev, sim.X, sim.num_bytes_x);
+                        state.x           = (double *) realloc(state.x,           sim.num_bytes_x);
+                        state.x_prev      = (double *) realloc(state.x_prev,      sim.num_bytes_x);
+                        state.x_prev_prev = (double *) realloc(state.x_prev_prev, sim.num_bytes_x);
+                        memcpy(state.x,           sim.X, sim.num_bytes_x);
+                        memcpy(state.x_prev,      sim.X, sim.num_bytes_x);
                         memcpy(state.x_prev_prev, sim.X, sim.num_bytes_x);
                     }
                 }
             }
             { // reset
-                if (imgui_button("reset", 'r'))
-                {
-                    memcpy(state.x, sim.X, sim.num_bytes_x);
-                    memcpy(state.x_prev, sim.X, sim.num_bytes_x);
+                if (imgui_button("reset", 'r')) {
+                    memcpy(state.x,           sim.X, sim.num_bytes_x);
+                    memcpy(state.x_prev,      sim.X, sim.num_bytes_x);
                     memcpy(state.x_prev_prev, sim.X, sim.num_bytes_x);
                 }
             }
         }
 
-        if (tweaks.playing)
-        {
-            if (tweaks.check_derivatives)
-            {
-                for_(k, ENABLED_NUM_FLAGS)
-                {
+        if (tweaks.playing) {
+            if (tweaks.check_derivatives) {
+                for_(k, ENABLED_NUM_FLAGS) {
                     Enabled tmp = {};
                     tmp.flags[k] = true;
                     printf("%s", enabled_flag_padded_strings[k]);
@@ -772,7 +547,7 @@ void hw10()
             }
             step(&sim, &state, &params, &enabled);
         }
-        widget_drag(PV, sim.num_nodes, (vec2 *)state.x, 0, monokai.white);
+        widget_drag(PV, sim.num_nodes, (vec2 *) state.x, 0, monokai.white);
 
         { // draw
             simulation_draw(PV, &sim, &state, &params, &enabled);
@@ -780,7 +555,7 @@ void hw10()
             { // gravity vector
                 gl_color(monokai.yellow);
                 gl_begin(LINES);
-                vec2 s = {1.3, 0};
+                vec2 s = { 1.3, 0 };
                 vec2 t = s + .3 * e_theta(tweaks.theta_gravity);
                 gl_vertex(s);
                 gl_vertex(t);
@@ -795,8 +570,9 @@ void hw10()
     }
 }
 
-int main()
-{
+
+int main() {
     hw10();
     return 0;
 }
+
